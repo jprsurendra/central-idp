@@ -5,9 +5,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 @SpringBootApplication
 public class CentralIdpApplication {
-
     public static void main(String[] args) {
         SpringApplication.run(CentralIdpApplication.class, args);
     }
-
 }

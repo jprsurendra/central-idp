@@ -1,3 +1,53 @@
 spring:
   application:
     name: central-idp
+
+  datasource:
+    url: ${DB_URL:jdbc:mysql://localhost:3306/central_idp_db?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true}
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MySQLDialect
+
+server:
+  port: ${SERVER_PORT:9090}
+
+# --------------------------------------------------------------
+# JWT signing keys — dual-key rotation support.
+# "current" signs new tokens. "previous" is only used to VALIDATE
+# tokens issued before the last rotation, until it's cleared.
+# See rotate-secrets.sh for the rotation procedure.
+# --------------------------------------------------------------
+idp:
+  jwt:
+    current-key-id: ${JWT_CURRENT_KEY_ID:key-1}
+    current-key-secret: ${JWT_CURRENT_KEY_SECRET}
+    previous-key-id: ${JWT_PREVIOUS_KEY_ID:}
+    previous-key-secret: ${JWT_PREVIOUS_KEY_SECRET:}
+    expiration-ms: ${JWT_EXPIRATION_MS:600000}   # 10 minutes — short-lived assertion, not a session token
+    issuer: central-idp
+
+  # Registered service-to-service clients allowed to call /verify (Pattern B).
+  # A real system would store these in a DB table with per-client rotation;
+  # kept as config for PoC simplicity.
+  clients:
+    ems-auth:
+      client-id: ${EMS_AUTH_CLIENT_ID:ems-auth}
+      client-secret: ${EMS_AUTH_CLIENT_SECRET}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+logging:
+  level:
+    com.idp: INFO
