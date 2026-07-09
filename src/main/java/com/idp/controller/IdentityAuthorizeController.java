@@ -1,4 +1,4 @@
-package com.centralidp.controller;
+package com.idp.controller;
 
 import com.idp.entity.IdentityUser;
 import com.idp.repository.IdentityUserRepository;
