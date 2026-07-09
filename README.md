@@ -29,6 +29,30 @@ represents a system the primary application integrates with, not a system it own
 
 9090 (deliberately outside `ems-platform`'s 8080–8083 range)
 
+## Project Files
+
+| File | Purpose | Committed to Git? |
+|---|---|---|
+| `pom.xml` | Maven build definition and dependencies | Yes |
+| `application.yml` | Spring Boot configuration (port, JWT settings, DB connection via env placeholders) | Yes |
+| `db-schema.sql` | Creates the database, `identity_users` table, and one seed test user | Yes |
+| `.env.example` | Template listing every environment variable this service needs, with placeholder values only — no real secrets | Yes |
+| `.env` | The actual environment file with real generated secrets (JWT key, DB password, client secret) | **No — git-ignored, never committed** |
+| `rotate-secrets.sh` | Rotates the JWT signing key (zero-downtime) or guides a database password rotation | Yes |
+| `src/main/java/com/centralidp/entity/IdentityUser.java` | The user record model for this service's own independent user store | Yes |
+| `src/main/java/com/centralidp/repository/IdentityUserRepository.java` | Data access for `IdentityUser` | Yes |
+| `src/main/java/com/centralidp/security/JwtKeyProvider.java` | Loads and manages the current/previous signing keys for rotation | Yes |
+| `src/main/java/com/centralidp/security/JwtService.java` | Issues and validates JWTs, using `JwtKeyProvider` | Yes |
+| `src/main/java/com/centralidp/dto/VerifyRequest.java` / `VerifyResponse.java` | Request/response shape for Pattern B's `/verify` endpoint | Yes |
+| `src/main/java/com/centralidp/controller/IdentityVerifyController.java` | Implements Pattern B (app-initiated / credential relay) | Yes |
+| `src/main/java/com/centralidp/controller/IdentityAuthorizeController.java` | Implements Pattern A (portal-initiated login page + redirect) | Yes |
+| `src/main/java/com/centralidp/config/SecurityConfig.java` | Disables Spring Security's default login form; provides the `BCryptPasswordEncoder` bean | Yes |
+
+**Rule of thumb applied throughout this repo:** any file that only contains
+*logic* (code, scripts, templates with placeholder values) is committed.
+Any file that could contain a *real secret value* is git-ignored — see
+`.gitignore` for the enforced list.
+
 ## Local setup
 
 1. Create the database and seed user:
