@@ -1,0 +1,1490 @@
+{
+  "info": {
+    "_postman_id": "9a7d2f09-d073-470c-8b83-38892dd7f14f",
+    "name": "central-idp \u2014 Full Test Suite",
+    "description": "Covers both integration patterns (Portal-Initiated / Pattern A, App-Initiated / Pattern B), the health endpoint, and dedicated tests confirming two security fixes: reflected-XSS escaping and redirect_uri allowlisting (open-redirect / token-exfiltration prevention).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:9090"
+    },
+    {
+      "key": "redirectUri",
+      "value": "http://localhost:8080/api/v1/auth/sso/callback"
+    },
+    {
+      "key": "clientId",
+      "value": "ems-auth"
+    },
+    {
+      "key": "clientSecret",
+      "value": "REPLACE_WITH_YOUR_EMS_AUTH_CLIENT_SECRET"
+    },
+    {
+      "key": "validUsername",
+      "value": "testvendor"
+    },
+    {
+      "key": "validPassword",
+      "value": "Test@123"
+    },
+    {
+      "key": "capturedToken",
+      "value": ""
+    },
+    {
+      "key": "registeredUsername",
+      "value": ""
+    },
+    {
+      "key": "registeredExternalId",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "00 \u2014 Health Check",
+      "item": [
+        {
+          "name": "GET /actuator/health \u2014 Service is up",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Status is UP', () => {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.status).to.eql('UP');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/actuator/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "actuator",
+                "health"
+              ]
+            },
+            "description": ""
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "01 \u2014 Registration (/register)",
+      "item": [
+        {
+          "name": "Happy path \u2014 new user registers successfully \u2014 201",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', () => pm.response.to.have.status(201));",
+                  "pm.test('Response contains a real externalId (UUID shape)', () => {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.externalId).to.match(/^[0-9a-f-]{36}$/i);",
+                  "    pm.collectionVariables.set('registeredUsername', json.username);",
+                  "    pm.collectionVariables.set('registeredExternalId', json.externalId);",
+                  "});",
+                  "pm.test('Password is never echoed back', () => {",
+                  "    pm.expect(pm.response.text()).to.not.include('Test@1234');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/identity/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "identity",
+                "register"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"testuser_{{$timestamp}}\",\n  \"password\": \"Test@1234\",\n  \"fullName\": \"Dynamic Test User\",\n  \"email\": \"testuser_{{$timestamp}}@example.com\",\n  \"department\": \"QA\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Duplicate username \u2014 409 Conflict",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 409 (username already exists)', () => {",
+                  "    pm.response.to.have.status(409);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/identity/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "identity",
+                "register"
+              ]
+            },
+            "description": "Uses {{validUsername}} (testvendor), which already exists in the seed data.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{validUsername}}\",\n  \"password\": \"Test@1234\",\n  \"fullName\": \"Someone Else\",\n  \"email\": \"someone.else@example.com\",\n  \"department\": \"QA\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Missing password \u2014 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400 (validation failure)', () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/identity/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "identity",
+                "register"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"testuser_missing_pw_{{$timestamp}}\",\n  \"fullName\": \"No Password User\",\n  \"email\": \"nopass_{{$timestamp}}@example.com\",\n  \"department\": \"QA\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Password too short (< 8 chars) \u2014 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400 (password too short)', () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/identity/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "identity",
+                "register"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"testuser_shortpw_{{$timestamp}}\",\n  \"password\": \"abc123\",\n  \"fullName\": \"Short Password User\",\n  \"email\": \"shortpw_{{$timestamp}}@example.com\",\n  \"department\": \"QA\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Invalid email format \u2014 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400 (invalid email format)', () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/identity/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "identity",
+                "register"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"testuser_bademail_{{$timestamp}}\",\n  \"password\": \"Test@1234\",\n  \"fullName\": \"Bad Email User\",\n  \"email\": \"not-a-valid-email\",\n  \"department\": \"QA\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Missing username \u2014 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400 (missing required field)', () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/identity/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "identity",
+                "register"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"password\": \"Test@1234\",\n  \"fullName\": \"No Username User\",\n  \"email\": \"nouser_{{$timestamp}}@example.com\",\n  \"department\": \"QA\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Chain check \u2014 newly registered user can immediately verify (Pattern B)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200 \u2014 freshly registered user verifies successfully', () => {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('externalId matches the one returned at registration', () => {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.externalId).to.eql(pm.collectionVariables.get('registeredExternalId'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "X-Client-Id",
+                "value": "{{clientId}}",
+                "type": "text"
+              },
+              {
+                "key": "X-Client-Secret",
+                "value": "{{clientSecret}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/identity/verify",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "identity",
+                "verify"
+              ]
+            },
+            "description": "Run the 'Happy path' registration request above first in the same run, so registeredUsername/registeredExternalId are populated.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{registeredUsername}}\",\n  \"password\": \"Test@1234\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "02 \u2014 Pattern B: Credential Verification API (/verify)",
+      "item": [
+        {
+          "name": "Valid credentials + valid client \u2014 200 with identity claims",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Response has expected identity claims', () => {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.username).to.eql(pm.variables.get('validUsername'));",
+                  "    pm.expect(json).to.have.property('fullName');",
+                  "    pm.expect(json).to.have.property('role');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "X-Client-Id",
+                "value": "{{clientId}}",
+                "type": "text"
+              },
+              {
+                "key": "X-Client-Secret",
+                "value": "{{clientSecret}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/identity/verify",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "identity",
+                "verify"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{validUsername}}\",\n  \"password\": \"{{validPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Invalid password \u2014 401",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 401', () => pm.response.to.have.status(401));",
+                  "pm.test('Response does not leak identity claims', () => {",
+                  "    pm.expect(pm.response.text()).to.not.include('fullName');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "X-Client-Id",
+                "value": "{{clientId}}",
+                "type": "text"
+              },
+              {
+                "key": "X-Client-Secret",
+                "value": "{{clientSecret}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/identity/verify",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "identity",
+                "verify"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{validUsername}}\",\n  \"password\": \"WrongPassword123\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Unknown username \u2014 401",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 401', () => pm.response.to.have.status(401));",
+                  "pm.test('Error does not reveal whether username exists', () => {",
+                  "    pm.expect(pm.response.text().toLowerCase()).to.include('invalid');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "X-Client-Id",
+                "value": "{{clientId}}",
+                "type": "text"
+              },
+              {
+                "key": "X-Client-Secret",
+                "value": "{{clientSecret}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/identity/verify",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "identity",
+                "verify"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"no_such_user\",\n  \"password\": \"Whatever123\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Missing client credentials \u2014 401 (service-to-service auth enforced)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 401', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/identity/verify",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "identity",
+                "verify"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{validUsername}}\",\n  \"password\": \"{{validPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Wrong client secret \u2014 401 (rejects unregistered caller)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 401', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "X-Client-Id",
+                "value": "{{clientId}}",
+                "type": "text"
+              },
+              {
+                "key": "X-Client-Secret",
+                "value": "totally-wrong-secret-value",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/identity/verify",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "identity",
+                "verify"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{validUsername}}\",\n  \"password\": \"{{validPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Unknown client id \u2014 401",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 401', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "X-Client-Id",
+                "value": "some-random-unregistered-client",
+                "type": "text"
+              },
+              {
+                "key": "X-Client-Secret",
+                "value": "{{clientSecret}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/identity/verify",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "identity",
+                "verify"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{validUsername}}\",\n  \"password\": \"{{validPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Empty username and password \u2014 401, not 500",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 401 (handled gracefully, not a server error)', () => {",
+                  "    pm.response.to.have.status(401);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "X-Client-Id",
+                "value": "{{clientId}}",
+                "type": "text"
+              },
+              {
+                "key": "X-Client-Secret",
+                "value": "{{clientSecret}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/identity/verify",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "identity",
+                "verify"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"\",\n  \"password\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Malformed JSON body \u2014 400, not 500",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400 (bad request), not 500', () => {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([400, 401]);",
+                  "    pm.expect(pm.response.code).to.not.eql(500);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "X-Client-Id",
+                "value": "{{clientId}}",
+                "type": "text"
+              },
+              {
+                "key": "X-Client-Secret",
+                "value": "{{clientSecret}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/identity/verify",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "identity",
+                "verify"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"username\": \"testvendor\", \"password\": ",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "03 \u2014 Pattern A: Portal-Initiated Login (/authorize)",
+      "item": [
+        {
+          "name": "GET login form \u2014 happy path, allowed redirectUri",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Response is HTML with a login form', () => {",
+                  "    pm.expect(pm.response.text()).to.include('<form');",
+                  "    pm.expect(pm.response.text()).to.include('name=\"username\"');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/identity/authorize",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "identity",
+                "authorize"
+              ],
+              "query": [
+                {
+                  "key": "redirectUri",
+                  "value": "{{redirectUri}}"
+                },
+                {
+                  "key": "state",
+                  "value": "xyz123"
+                }
+              ]
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "GET login form \u2014 redirectUri NOT in allowlist \u2014 400 (open-redirect prevention)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400 \u2014 untrusted redirectUri rejected', () => {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "pm.test('No login form is served for an untrusted destination', () => {",
+                  "    pm.expect(pm.response.text()).to.not.include('<form');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/identity/authorize",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "identity",
+                "authorize"
+              ],
+              "query": [
+                {
+                  "key": "redirectUri",
+                  "value": "http://evil-attacker-site.example/steal-token"
+                },
+                {
+                  "key": "state",
+                  "value": "xyz"
+                }
+              ]
+            },
+            "description": "Security regression test: confirms the redirect_uri allowlist check prevents an attacker from directing a signed token to their own site."
+          },
+          "response": []
+        },
+        {
+          "name": "GET login form \u2014 reflected XSS attempt is escaped, not executed",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Raw script tag is NOT present in the response (XSS payload escaped)', () => {",
+                  "    pm.expect(pm.response.text()).to.not.include('<script>alert(1)</script>');",
+                  "});",
+                  "pm.test('Payload appears only in HTML-escaped form', () => {",
+                  "    pm.expect(pm.response.text()).to.include('&lt;script&gt;');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/identity/authorize",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "identity",
+                "authorize"
+              ],
+              "query": [
+                {
+                  "key": "redirectUri",
+                  "value": "{{redirectUri}}"
+                },
+                {
+                  "key": "state",
+                  "value": "\"><script>alert(1)</script>"
+                }
+              ]
+            },
+            "description": "Security regression test: confirms redirectUri/state are HTML-escaped before being embedded in the login page, preventing reflected XSS."
+          },
+          "response": []
+        },
+        {
+          "name": "GET login form \u2014 missing redirectUri \u2014 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400 (missing required parameter)', () => {",
+                  "    pm.response.to.have.status(400);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/identity/authorize",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "identity",
+                "authorize"
+              ],
+              "query": [
+                {
+                  "key": "state",
+                  "value": "xyz"
+                }
+              ]
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "POST login \u2014 valid credentials \u2014 302 redirect with signed token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 302 (redirect)', () => pm.response.to.have.status(302));",
+                  "pm.test('Location header contains a token and the original state', () => {",
+                  "    const location = pm.response.headers.get('Location');",
+                  "    pm.expect(location).to.include('token=');",
+                  "    pm.expect(location).to.include('state=xyz123');",
+                  "    const tokenMatch = location.match(/token=([^&]+)/);",
+                  "    if (tokenMatch) {",
+                  "        pm.collectionVariables.set('capturedToken', decodeURIComponent(tokenMatch[1]));",
+                  "    }",
+                  "});",
+                  "pm.test('Captured token looks like a JWT (three dot-separated segments)', () => {",
+                  "    const token = pm.collectionVariables.get('capturedToken');",
+                  "    pm.expect(token.split('.').length).to.eql(3);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/identity/authorize",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "identity",
+                "authorize"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "username={{validUsername}}&password={{validPassword}}&redirectUri={{redirectUri}}&state=xyz123",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "protocolProfileBehavior": {
+            "followRedirects": false
+          }
+        },
+        {
+          "name": "POST login \u2014 invalid password \u2014 401, no redirect",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 401', () => pm.response.to.have.status(401));",
+                  "pm.test('No Location header is set (no token issued)', () => {",
+                  "    pm.expect(pm.response.headers.get('Location')).to.be.null;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/identity/authorize",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "identity",
+                "authorize"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "username={{validUsername}}&password=WrongPassword&redirectUri={{redirectUri}}&state=xyz",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "protocolProfileBehavior": {
+            "followRedirects": false
+          }
+        },
+        {
+          "name": "POST login \u2014 unknown username \u2014 401",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 401', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/identity/authorize",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "identity",
+                "authorize"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "username=no_such_user&password=Whatever123&redirectUri={{redirectUri}}&state=xyz",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "protocolProfileBehavior": {
+            "followRedirects": false
+          }
+        },
+        {
+          "name": "POST login \u2014 redirectUri NOT in allowlist \u2014 400, no token issued",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400 \u2014 untrusted redirectUri rejected even with valid credentials', () => {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "pm.test('No Location header \u2014 token never issued to an untrusted destination', () => {",
+                  "    pm.expect(pm.response.headers.get('Location')).to.be.null;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/identity/authorize",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "identity",
+                "authorize"
+              ]
+            },
+            "description": "Critical security regression test: even with 100% valid credentials, a request targeting an unregistered redirectUri must be rejected BEFORE a token is generated \u2014 this is what actually prevents token exfiltration.",
+            "body": {
+              "mode": "raw",
+              "raw": "username={{validUsername}}&password={{validPassword}}&redirectUri=http://evil-attacker-site.example/steal&state=xyz",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "protocolProfileBehavior": {
+            "followRedirects": false
+          }
+        },
+        {
+          "name": "POST login \u2014 missing redirectUri \u2014 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400 (missing required parameter)', () => {",
+                  "    pm.response.to.have.status(400);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/identity/authorize",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "identity",
+                "authorize"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "username={{validUsername}}&password={{validPassword}}&state=xyz",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "protocolProfileBehavior": {
+            "followRedirects": false
+          }
+        }
+      ]
+    },
+    {
+      "name": "04 \u2014 JWT Rotation (run manually around rotate-secrets.sh)",
+      "item": [
+        {
+          "name": "STEP 1 \u2014 Verify BEFORE rotation (baseline)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Baseline call succeeds before rotation', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "X-Client-Id",
+                "value": "{{clientId}}",
+                "type": "text"
+              },
+              {
+                "key": "X-Client-Secret",
+                "value": "{{clientSecret}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/identity/verify",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "identity",
+                "verify"
+              ]
+            },
+            "description": "Run this first. Then run: ./rotate-secrets.sh jwt, restart central-idp, then run Step 2.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{validUsername}}\",\n  \"password\": \"{{validPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "STEP 2 \u2014 POST login AFTER rotation \u2014 new token still issues correctly",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('New token issues successfully with the rotated current key', () => {",
+                  "    pm.response.to.have.status(302);",
+                  "    pm.expect(pm.response.headers.get('Location')).to.include('token=');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/identity/authorize",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "identity",
+                "authorize"
+              ]
+            },
+            "description": "Run this AFTER rotate-secrets.sh jwt + service restart. Confirms the new 'current' key signs successfully. To fully test the rotation grace period, a token captured before rotation would need to be validated by a consumer (ems-auth) against both current and previous keys \u2014 tracked as a future test once the ems-auth adapter exists.",
+            "body": {
+              "mode": "raw",
+              "raw": "username={{validUsername}}&password={{validPassword}}&redirectUri={{redirectUri}}&state=post-rotation",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "protocolProfileBehavior": {
+            "followRedirects": false
+          }
+        }
+      ]
+    }
+  ]
+}
