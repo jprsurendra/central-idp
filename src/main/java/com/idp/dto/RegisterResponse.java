@@ -1,19 +1,17 @@
 package com.idp.dto;
 
-public class VerifyResponse {
+public class RegisterResponse {
     private String externalId;
     private String username;
     private String fullName;
     private String email;
-    private String department;
     private String role;
 
-    public VerifyResponse(String externalId, String username, String fullName, String email, String department, String role) {
+    public RegisterResponse(String externalId, String username, String fullName, String email, String role) {
         this.externalId = externalId;
         this.username = username;
         this.fullName = fullName;
         this.email = email;
-        this.department = department;
         this.role = role;
     }
 
@@ -21,6 +19,5 @@ public class VerifyResponse {
     public String getUsername() { return username; }
     public String getFullName() { return fullName; }
     public String getEmail() { return email; }
-    public String getDepartment() { return department; }
     public String getRole() { return role; }
 }

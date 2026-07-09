@@ -62,6 +62,6 @@ public class IdentityVerifyController {
     }
 
     private VerifyResponse toResponse(IdentityUser user) {
-        return new VerifyResponse(user.getUsername(), user.getFullName(), user.getDepartment(), user.getRole());
+        return new VerifyResponse(user.getExternalId(), user.getUsername(), user.getFullName(), user.getEmail(), user.getDepartment(), user.getRole());
     }
 }

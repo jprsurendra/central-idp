@@ -31,7 +31,9 @@ public class JwtService {
 
         return Jwts.builder()
                 .header().add("kid", keyProvider.getCurrentKid()).and()
-                .subject(user.getUsername())
+                .subject(user.getExternalId())
+                .claim("username", user.getUsername())
+                .claim("email", user.getEmail())
                 .claim("fullName", user.getFullName())
                 .claim("department", user.getDepartment())
                 .claim("role", user.getRole())
