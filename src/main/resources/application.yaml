@@ -42,6 +42,12 @@ idp:
       client-id: ${EMS_AUTH_CLIENT_ID:ems-auth}
       client-secret: ${EMS_AUTH_CLIENT_SECRET}
 
+  # Allowlist for Pattern A's redirectUri parameter — prevents open-redirect /
+  # token-exfiltration attacks. Comma-separated if more than one caller needs
+  # to be registered. An attacker-supplied redirectUri outside this list is
+  # rejected before any token is ever issued.
+  allowed-redirect-uris: ${ALLOWED_REDIRECT_URIS:http://localhost:8080/api/v1/auth/sso/callback}
+
 management:
   endpoints:
     web:

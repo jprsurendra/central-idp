@@ -6,14 +6,19 @@ import com.idp.security.JwtService;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.util.HtmlUtils;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import java.net.URI;
+import java.util.Arrays;
+import java.util.List;
 
 /**
  * Pattern A — Portal-Initiated Access. Represents the "existing system's"
@@ -24,6 +29,15 @@ import java.net.URI;
  *
  * See integration-design.md Section 2, Pattern A for the
  * full sequence diagram this implements.
+ *
+ * Security notes:
+ * - redirectUri and state are attacker-controlled query parameters and
+ *   are HTML-escaped before being embedded in the login page, to prevent
+ *   reflected XSS.
+ * - redirectUri is validated against a configured allowlist before any
+ *   token is issued or redirected to, to prevent open-redirect /
+ *   token-exfiltration attacks (an attacker sending a victim a link with
+ *   their own redirectUri to capture the issued token).
  */
 @Slf4j
 @Controller
@@ -35,11 +49,37 @@ public class IdentityAuthorizeController {
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
 
+    @Value("${idp.allowed-redirect-uris}")
+    private String allowedRedirectUrisRaw;
+
+    private List<String> allowedRedirectUris() {
+        return Arrays.stream(allowedRedirectUrisRaw.split(","))
+                .map(String::strip)
+                .filter(s -> !s.isEmpty())
+                .toList();
+    }
+
+    private boolean isAllowedRedirect(String redirectUri) {
+        return allowedRedirectUris().stream().anyMatch(redirectUri::startsWith);
+    }
+
     @GetMapping(produces = MediaType.TEXT_HTML_VALUE)
     @ResponseBody
-    public String loginForm(@RequestParam String redirectUri,
-                             @RequestParam(required = false) String state) {
-        return """
+    public ResponseEntity<String> loginForm(@RequestParam String redirectUri,
+                                            @RequestParam(required = false) String state) {
+        if (!isAllowedRedirect(redirectUri)) {
+            log.warn("Rejected /authorize request — redirectUri not in allowlist: {}", redirectUri);
+            return ResponseEntity.badRequest()
+                    .body(HtmlUtils.htmlEscape("Error: redirectUri is not a registered, trusted destination."));
+        }
+
+        // Both values come from the query string — an attacker fully
+        // controls them. HTML-escape before embedding in the page to
+        // prevent reflected XSS (e.g. redirectUri="><script>...).
+        String safeRedirectUri = HtmlUtils.htmlEscape(redirectUri);
+        String safeState = HtmlUtils.htmlEscape(state == null ? "" : state);
+
+        String html = """
                 <!DOCTYPE html>
                 <html>
                 <head><title>central-idp — Sign in</title></head>
@@ -61,15 +101,23 @@ public class IdentityAuthorizeController {
                     </form>
                 </body>
                 </html>
-                """.formatted(redirectUri, state == null ? "" : state);
+                """.formatted(safeRedirectUri, safeState);
+
+        return ResponseEntity.ok(html);
     }
 
     @PostMapping
     public void handleLogin(@RequestParam String username,
-                             @RequestParam String password,
-                             @RequestParam String redirectUri,
-                             @RequestParam(required = false) String state,
-                             HttpServletResponse response) throws Exception {
+                            @RequestParam String password,
+                            @RequestParam String redirectUri,
+                            @RequestParam(required = false) String state,
+                            HttpServletResponse response) throws Exception {
+
+        if (!isAllowedRedirect(redirectUri)) {
+            log.warn("Rejected /authorize POST — redirectUri not in allowlist: {}", redirectUri);
+            response.sendError(HttpStatus.BAD_REQUEST.value(), "redirectUri is not a registered, trusted destination");
+            return;
+        }
 
         var userOpt = userRepository.findByUsernameAndActiveTrue(username)
                 .filter(u -> passwordEncoder.matches(password, u.getPasswordHash()));
