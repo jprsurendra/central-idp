@@ -1,4 +1,4 @@
-package com.idp.controller;
+package com.centralidp.controller;
 
 import com.idp.entity.IdentityUser;
 import com.idp.repository.IdentityUserRepository;
@@ -9,6 +9,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.util.UriComponentsBuilder;
 
