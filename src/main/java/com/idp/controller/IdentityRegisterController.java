@@ -4,6 +4,12 @@ import com.idp.dto.RegisterRequest;
 import com.idp.dto.RegisterResponse;
 import com.idp.entity.IdentityUser;
 import com.idp.repository.IdentityUserRepository;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -31,6 +37,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/v1/identity")
 @RequiredArgsConstructor
+@Tag(name = "Registration", description = "Self-service identity registration — the platform's sole registration authority")
 public class IdentityRegisterController {
 
     private final IdentityUserRepository userRepository;
@@ -38,6 +45,20 @@ public class IdentityRegisterController {
 
     private static final String DEFAULT_ROLE = "CITIZEN";
 
+    @Operation(
+            summary = "Register a new identity",
+            description = "Creates a new identity on central-idp and returns a durable externalId. " +
+                    "This is the platform's sole registration authority — every account on " +
+                    "ems-auth, whether created directly here or via ems-auth's /register/sso " +
+                    "proxy, originates from this endpoint. Role is always CITIZEN regardless of " +
+                    "request content; there is no way to self-assign an elevated role."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "201", description = "Identity created successfully",
+                    content = @Content(schema = @Schema(implementation = RegisterResponse.class))),
+            @ApiResponse(responseCode = "400", description = "Validation failed (short password, invalid email, missing fields)"),
+            @ApiResponse(responseCode = "409", description = "Username already exists")
+    })
     @PostMapping("/register")
     public ResponseEntity<?> register(@Valid @RequestBody RegisterRequest request) {
         if (userRepository.findByUsernameAndActiveTrue(request.getUsername()).isPresent()) {
