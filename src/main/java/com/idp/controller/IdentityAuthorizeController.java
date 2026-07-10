@@ -3,6 +3,11 @@ package com.idp.controller;
 import com.idp.entity.IdentityUser;
 import com.idp.repository.IdentityUserRepository;
 import com.idp.security.JwtService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -30,6 +35,13 @@ import java.util.List;
  * See integration-design.md Section 2, Pattern A for the
  * full sequence diagram this implements.
  *
+ * Note for Swagger/API consumers: these two endpoints are NOT typical
+ * JSON APIs — GET serves an HTML login form, POST performs a 302
+ * redirect. They're documented here for completeness and so the flow is
+ * visible in one place, but "Try it out" in Swagger UI won't behave like
+ * a normal JSON request/response — use a real browser to exercise this
+ * flow (see central-idp's README "Trying it out" section).
+ *
  * Security notes:
  * - redirectUri and state are attacker-controlled query parameters and
  *   are HTML-escaped before being embedded in the login page, to prevent
@@ -43,6 +55,7 @@ import java.util.List;
 @Controller
 @RequestMapping("/api/v1/identity/authorize")
 @RequiredArgsConstructor
+@Tag(name = "Portal Login (Pattern A)", description = "Browser-based, portal-initiated login — serves an HTML form and performs a redirect, not typical JSON endpoints")
 public class IdentityAuthorizeController {
 
     private final IdentityUserRepository userRepository;
@@ -63,10 +76,22 @@ public class IdentityAuthorizeController {
         return allowedRedirectUris().stream().anyMatch(redirectUri::startsWith);
     }
 
+    @Operation(
+            summary = "Serve the portal login page (HTML, not JSON)",
+            description = "Returns an HTML login form. redirectUri must exactly match (by prefix) " +
+                    "an entry in the server-side allowlist (idp.allowed-redirect-uris) — an " +
+                    "untrusted redirectUri is rejected here, before any credentials are even " +
+                    "collected, to prevent token exfiltration to an attacker-controlled destination."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Login form HTML"),
+            @ApiResponse(responseCode = "400", description = "redirectUri is not in the configured allowlist, or is missing")
+    })
     @GetMapping(produces = MediaType.TEXT_HTML_VALUE)
     @ResponseBody
-    public ResponseEntity<String> loginForm(@RequestParam String redirectUri,
-                                            @RequestParam(required = false) String state) {
+    public ResponseEntity<String> loginForm(
+            @Parameter(description = "Must match an entry in idp.allowed-redirect-uris") @RequestParam String redirectUri,
+            @Parameter(description = "Opaque value round-tripped back to the caller, unmodified") @RequestParam(required = false) String state) {
         if (!isAllowedRedirect(redirectUri)) {
             log.warn("Rejected /authorize request — redirectUri not in allowlist: {}", redirectUri);
             return ResponseEntity.badRequest()
@@ -106,12 +131,24 @@ public class IdentityAuthorizeController {
         return ResponseEntity.ok(html);
     }
 
+    @Operation(
+            summary = "Submit login credentials, receive a redirect with a signed token",
+            description = "On success, performs a 302 redirect to redirectUri with a signed " +
+                    "assertion token appended as a query parameter — this is the response a " +
+                    "browser would follow automatically; it is not a JSON response. On failure, " +
+                    "returns 400 or 401 with no redirect and no token issued."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "302", description = "Redirect to redirectUri?token=...&state=..."),
+            @ApiResponse(responseCode = "400", description = "redirectUri is not in the configured allowlist"),
+            @ApiResponse(responseCode = "401", description = "Invalid username or password")
+    })
     @PostMapping
     public void handleLogin(@RequestParam String username,
-                            @RequestParam String password,
-                            @RequestParam String redirectUri,
-                            @RequestParam(required = false) String state,
-                            HttpServletResponse response) throws Exception {
+                             @RequestParam String password,
+                             @RequestParam String redirectUri,
+                             @RequestParam(required = false) String state,
+                             @Parameter(hidden = true) HttpServletResponse response) throws Exception {
 
         if (!isAllowedRedirect(redirectUri)) {
             log.warn("Rejected /authorize POST — redirectUri not in allowlist: {}", redirectUri);
