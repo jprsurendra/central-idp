@@ -1,0 +1,750 @@
+{
+  "info": {
+    "_postman_id": "bd678b8d-b575-40f3-9b45-a86666abdc5f",
+    "name": "ems-auth \u2014 SSO Integration Test Suite",
+    "description": "Tests ems-auth's three SSO endpoints (registration proxy, Pattern B login, Pattern A callback) through the Gateway, plus regression checks confirming the old local /login and /register endpoints are genuinely retired, not just returning a different error. Companion to central-idp.postman_collection.json.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "centralIdpBaseUrl",
+      "value": "http://localhost:9090"
+    },
+    {
+      "key": "redirectUri",
+      "value": "http://localhost:8080/api/v1/auth/sso/callback"
+    },
+    {
+      "key": "existingCentralIdpUsername",
+      "value": "testvendor"
+    },
+    {
+      "key": "existingCentralIdpPassword",
+      "value": "Test@123"
+    },
+    {
+      "key": "capturedAssertionToken",
+      "value": ""
+    },
+    {
+      "key": "capturedRajSahayJwt",
+      "value": ""
+    },
+    {
+      "key": "registeredUsername",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "01 \u2014 Registration Proxy (/register/sso)",
+      "item": [
+        {
+          "name": "Happy path \u2014 proxies to central-idp, auto-login \u2014 200 with JWT",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Response contains a real JWT', () => {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.accessToken.split('.').length).to.eql(3);",
+                  "    pm.expect(json.tokenType).to.eql('Bearer');",
+                  "    pm.collectionVariables.set('capturedRajSahayJwt', json.accessToken);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/register/sso",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "register",
+                "sso"
+              ]
+            },
+            "description": "Calls central-idp's /register internally, then creates a linked local profile row in the same request, then issues a RajSahay JWT immediately.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"emsauth_test_{{$timestamp}}\",\n  \"password\": \"Test@1234\",\n  \"fullName\": \"EMS Auth Test User\",\n  \"email\": \"emsauth_test_{{$timestamp}}@example.com\",\n  \"department\": \"QA\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Duplicate username on central-idp \u2014 409",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 409 (username already exists on central-idp)', () => {",
+                  "    pm.response.to.have.status(409);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/register/sso",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "register",
+                "sso"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{existingCentralIdpUsername}}\",\n  \"password\": \"Test@1234\",\n  \"fullName\": \"Someone Else\",\n  \"email\": \"someone.else.{{$timestamp}}@example.com\",\n  \"department\": \"QA\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Missing password \u2014 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400 (validation failure)', () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/register/sso",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "register",
+                "sso"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"emsauth_nopw_{{$timestamp}}\",\n  \"fullName\": \"No Password User\",\n  \"email\": \"nopw_{{$timestamp}}@example.com\",\n  \"department\": \"QA\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Invalid email format \u2014 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400 (invalid email)', () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/register/sso",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "register",
+                "sso"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"emsauth_bademail_{{$timestamp}}\",\n  \"password\": \"Test@1234\",\n  \"fullName\": \"Bad Email User\",\n  \"email\": \"not-a-valid-email\",\n  \"department\": \"QA\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "02 \u2014 Pattern B Login (/sso/login)",
+      "item": [
+        {
+          "name": "Existing central-idp user, first EMS-platform touch \u2014 JIT provisioning \u2014 200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Response contains a real JWT', () => {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.accessToken.split('.').length).to.eql(3);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/sso/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "sso",
+                "login"
+              ]
+            },
+            "description": "Verifies against central-idp; if no local ems-auth profile exists yet for this externalId, one is auto-provisioned in this same request (JIT).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{existingCentralIdpUsername}}\",\n  \"password\": \"{{existingCentralIdpPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Same user, second login \u2014 200, no re-provisioning error",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200 on repeat login (finds existing linked account)', () => {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/sso/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "sso",
+                "login"
+              ]
+            },
+            "description": "Confirms findOrProvisionUser correctly finds the already-linked account by externalId on a second login, rather than erroring or duplicating.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{existingCentralIdpUsername}}\",\n  \"password\": \"{{existingCentralIdpPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Invalid password \u2014 401",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 401', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/sso/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "sso",
+                "login"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{existingCentralIdpUsername}}\",\n  \"password\": \"WrongPassword123\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Unknown username (not registered anywhere) \u2014 401",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 401', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/sso/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "sso",
+                "login"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"no_such_user_anywhere\",\n  \"password\": \"Whatever123\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "03 \u2014 Pattern A Callback (/sso/callback)",
+      "item": [
+        {
+          "name": "STEP 1 \u2014 Log in on central-idp directly, capture the assertion token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 302 (redirect with token)', () => pm.response.to.have.status(302));",
+                  "pm.test('Location header contains a token \u2014 capture it for Step 2', () => {",
+                  "    const location = pm.response.headers.get('Location');",
+                  "    pm.expect(location).to.include('token=');",
+                  "    const tokenMatch = location.match(/token=([^&]+)/);",
+                  "    pm.collectionVariables.set('capturedAssertionToken', decodeURIComponent(tokenMatch[1]));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{centralIdpBaseUrl}}/api/v1/identity/authorize",
+              "host": [
+                "{{centralIdpBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "identity",
+                "authorize"
+              ]
+            },
+            "description": "This is central-idp's own endpoint, called directly here (not through the Gateway) purely to obtain a real assertion token for Step 2, simulating what a browser would receive after the user submits the login form.",
+            "body": {
+              "mode": "raw",
+              "raw": "username={{existingCentralIdpUsername}}&password={{existingCentralIdpPassword}}&redirectUri={{redirectUri}}&state=postman-chain",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "protocolProfileBehavior": {
+            "followRedirects": false
+          }
+        },
+        {
+          "name": "STEP 2 \u2014 Present the token to ems-auth's callback \u2014 200 with RajSahay JWT",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Response contains a real JWT', () => {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.accessToken.split('.').length).to.eql(3);",
+                  "    pm.expect(json.tokenType).to.eql('Bearer');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/sso/callback",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "sso",
+                "callback"
+              ],
+              "query": [
+                {
+                  "key": "token",
+                  "value": "{{capturedAssertionToken}}"
+                },
+                {
+                  "key": "state",
+                  "value": "postman-chain"
+                }
+              ]
+            },
+            "description": "Run Step 1 immediately before this in the same run, so capturedAssertionToken is populated. This two-step chain exercises the exact same validation path (signature, issuer, audience) a real browser redirect would, without needing an actual browser."
+          },
+          "response": []
+        },
+        {
+          "name": "Missing token parameter \u2014 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400 (missing required parameter)', () => {",
+                  "    pm.response.to.have.status(400);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/sso/callback",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "sso",
+                "callback"
+              ],
+              "query": [
+                {
+                  "key": "state",
+                  "value": "xyz"
+                }
+              ]
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "Malformed/garbage token \u2014 401",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 401 (invalid token, not a 500)', () => {",
+                  "    pm.response.to.have.status(401);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/sso/callback",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "sso",
+                "callback"
+              ],
+              "query": [
+                {
+                  "key": "token",
+                  "value": "not-a-real-jwt-at-all"
+                },
+                {
+                  "key": "state",
+                  "value": "xyz"
+                }
+              ]
+            },
+            "description": ""
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "04 \u2014 Regression: Local Auth Retirement",
+      "item": [
+        {
+          "name": "Old local POST /api/v1/auth/login \u2014 404, not just failing auth",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 404 \u2014 endpoint genuinely does not exist', () => {",
+                  "    pm.response.to.have.status(404);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "Confirms the local, password-based login endpoint was actually removed, not just made to always fail \u2014 a 404 here proves there's no residual local authentication path left in the platform.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"anyone\",\n  \"password\": \"anything\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Old local POST /api/v1/auth/register \u2014 404, not just failing validation",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 404 \u2014 endpoint genuinely does not exist', () => {",
+                  "    pm.response.to.have.status(404);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "register"
+              ]
+            },
+            "description": "Confirms central-idp is the sole registration authority \u2014 this endpoint no longer exists at all.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"anyone\",\n  \"password\": \"anything\",\n  \"email\": \"a@b.com\",\n  \"fullName\": \"A B\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}
