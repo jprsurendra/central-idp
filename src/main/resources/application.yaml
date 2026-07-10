@@ -1,3 +1,6 @@
+# application.yml and application.yaml both are functionally identical to Spring Boot.
+# It recognizes both .yml and .yaml extensions equally; there's no behavior difference.
+# I just used .yml out of habit since that's what most of your other services use.
 spring:
   application:
     name: central-idp
@@ -47,6 +50,22 @@ idp:
   # to be registered. An attacker-supplied redirectUri outside this list is
   # rejected before any token is ever issued.
   allowed-redirect-uris: ${ALLOWED_REDIRECT_URIS:http://localhost:8080/api/v1/auth/sso/callback}
+
+# ===== SpringDoc / Swagger UI =====
+springdoc:
+  api-docs:
+    path: /api-docs
+    enabled: true
+  swagger-ui:
+    path: /swagger-ui.html
+    enabled: true
+    operations-sorter: method
+    tags-sorter: alpha
+    display-request-duration: true
+    try-it-out-enabled: true
+    filter: true
+  default-produces-media-type: application/json
+  default-consumes-media-type: application/json
 
 management:
   endpoints:
