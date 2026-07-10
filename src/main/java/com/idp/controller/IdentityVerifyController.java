@@ -4,6 +4,13 @@ import com.idp.dto.VerifyRequest;
 import com.idp.dto.VerifyResponse;
 import com.idp.entity.IdentityUser;
 import com.idp.repository.IdentityUserRepository;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -28,6 +35,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/v1/identity")
 @RequiredArgsConstructor
+@Tag(name = "Verification", description = "Pattern B — client-authenticated credential verification for consuming services")
 public class IdentityVerifyController {
 
     private final IdentityUserRepository userRepository;
@@ -39,8 +47,21 @@ public class IdentityVerifyController {
     @Value("${idp.clients.ems-auth.client-secret}")
     private String registeredClientSecret;
 
+    @Operation(
+            summary = "Verify credentials (service-to-service)",
+            description = "Called by a registered client (e.g. ems-auth) to verify an end user's " +
+                    "credentials on their behalf. Requires X-Client-Id / X-Client-Secret headers " +
+                    "identifying the calling service — never called directly by an end user's browser."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Credentials valid — identity claims returned",
+                    content = @Content(schema = @Schema(implementation = VerifyResponse.class))),
+            @ApiResponse(responseCode = "401", description = "Invalid credentials, or missing/incorrect client authentication")
+    })
     @PostMapping("/verify")
-    public ResponseEntity<?> verify(@RequestBody VerifyRequest request, HttpServletRequest httpRequest) {
+    public ResponseEntity<?> verify(
+            @RequestBody VerifyRequest request,
+            @Parameter(hidden = true) HttpServletRequest httpRequest) {
         String clientId = httpRequest.getHeader("X-Client-Id");
         String clientSecret = httpRequest.getHeader("X-Client-Secret");
 
