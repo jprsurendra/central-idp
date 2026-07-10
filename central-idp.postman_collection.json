@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "9a7d2f09-d073-470c-8b83-38892dd7f14f",
+    "_postman_id": "4c37fa60-d192-4287-abe4-f00dacf847dc",
     "name": "central-idp \u2014 Full Test Suite",
     "description": "Covers both integration patterns (Portal-Initiated / Pattern A, App-Initiated / Pattern B), the health endpoint, and dedicated tests confirming two security fixes: reflected-XSS escaping and redirect_uri allowlisting (open-redirect / token-exfiltration prevention).",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
@@ -86,6 +86,55 @@
     {
       "name": "01 \u2014 Registration (/register)",
       "item": [
+        {
+          "name": "EXAMPLE \u2014 Plain static request body (for manual reference/copy)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201 on first run, or 409 if newuser1 already exists', () => {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([201, 409]);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/identity/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "identity",
+                "register"
+              ]
+            },
+            "description": "Plain, non-dynamic example \u2014 safe to copy/paste manually into a new request. Will return 409 on every run after the first, since 'newuser1' won't be unique a second time. Use the 'Happy path' request below for repeatable automated runs.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"newuser1\",\n  \"password\": \"Test@1234\",\n  \"fullName\": \"New User One\",\n  \"email\": \"newuser1@example.com\",\n  \"department\": \"MSME Services\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
         {
           "name": "Happy path \u2014 new user registers successfully \u2014 201",
           "event": [
